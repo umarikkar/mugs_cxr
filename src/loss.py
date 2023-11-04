@@ -106,8 +106,13 @@ class InfoNCELoss(nn.Module):
             self._dequeue_and_enqueue(targ)
 
         large_crop_loss /= large_loss_terms
-        small_crop_loss /= small_loss_terms
-        loss = 0.5 * (large_crop_loss + small_crop_loss)
+            
+        if small_loss_terms > 0:
+            small_crop_loss /= small_loss_terms
+            loss = 0.5 * (large_crop_loss + small_crop_loss)
+        else:
+            loss = large_crop_loss
+            
         return loss
 
 
@@ -182,8 +187,12 @@ class ClusteringLoss(nn.Module):
 
         self.update_center(teacher_output)
         loss_large_crop /= loss_terms_large_crop
-        loss_small_crop /= loss_terms_small_crop
-        total_loss = 0.5 * (loss_large_crop + loss_small_crop)
+        if loss_terms_small_crop > 0:
+            loss_small_crop /= loss_terms_small_crop
+            total_loss = 0.5 * (loss_large_crop + loss_small_crop)
+        else:
+            total_loss = loss_large_crop
+            
         return total_loss
 
     @torch.no_grad()

@@ -1,0 +1,20 @@
+
+{   
+    "version": "0.2.0",
+
+    "configurations": [
+        {
+        "name": "Python: mugs pretrain",
+        "type": "python",
+        "module": "torch.distributed.launch",
+        "request": "launch",
+        "console": "integratedTerminal",
+        "args": [
+            "--nproc_per_node", "1", 
+            "/vol/research/fmodel_medical/people/umar/mugs_cxr/main.py",
+        ],
+
+        }
+
+    ]
+}

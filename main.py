@@ -1,19 +1,4 @@
-# Copyright 2022 Garena Online Private Limited
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-"""
-Mugs training code
-"""
+
 import argparse
 import datetime
 import json
@@ -24,6 +9,7 @@ import time
 from collections import OrderedDict
 from pathlib import Path
 
+
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
@@ -32,7 +18,7 @@ from torchvision import models as torchvision_models
 import utils
 from src.loss import get_multi_granular_loss
 from src.model import get_model
-from src.multicropdataset import data_prefetcher, get_dataset
+from src.multicropdataset import data_prefetcher, get_dataset_xrv, get_dataset
 from src.optimizer import cancel_gradients_last_layer, get_optimizer, clip_gradients
 
 torchvision_archs = sorted(
@@ -79,7 +65,7 @@ def get_args_parser():
     parser.add_argument(
         "--use_fp16",
         type=utils.bool_flag,
-        default=False,
+        default=True,
         help="""Whether or not
         to use half precision for training. Improves training time and memory requirements,
         but can provoke instability and slight decay of performance. We recommend disabling
@@ -112,11 +98,11 @@ def get_args_parser():
     parser.add_argument(
         "--batch_size_per_gpu",
         type=int,
-        default=64,
+        default=8,
         help="Per-GPU batch-size : number of distinct images loaded on one GPU.",
     )
     parser.add_argument(
-        "--epochs", type=int, default=100, help="Number of epochs of training."
+        "--epochs", type=int, default=300, help="Number of epochs of training."
     )
     parser.add_argument(
         "--warmup_epochs",
@@ -294,7 +280,7 @@ def get_args_parser():
         "--global_crops_scale",
         type=float,
         nargs="+",
-        default=(0.25, 1.0),
+        default=(0.5, 1.0),
         help="""Scale range of the cropped image before resizing, relatively to the origin image.
         Used for large global view cropping. When disabling multi-crop (--local_crops_number 0), we
         recommand using a wider range of scale ("--global_crops_scale 0.14 1." for example)""",
@@ -302,7 +288,7 @@ def get_args_parser():
     parser.add_argument(
         "--local_crops_number",
         type=int,
-        default=10,
+        default=0,
         help="""Number of small
         local views to generate. Set this parameter to 0 to disable multi-crop training.
         When disabling multi-crop we recommend to use "--global_crops_scale 0.14 1." """,
@@ -377,14 +363,14 @@ def get_args_parser():
     )
     parser.add_argument(
         "--saveckp_freq",
-        default=50,
+        default=25,
         type=int,
         help="""Save checkpoint every x epochs.""",
     )
     parser.add_argument("--seed", default=0, type=int, help="""Random seed.""")
     parser.add_argument(
         "--num_workers",
-        default=12,
+        default=0,
         type=int,
         help="""Number of data loading workers per GPU.""",
     )
@@ -430,6 +416,10 @@ def get_args_parser():
         help="""whether we use ddp job. We suggest to use it for distributed training. For single GPUs
         or Node, you can close it.""",
     )
+    
+    parser.add_argument('--weka', action='store_true')
+    parser.set_defaults(weka=False)
+    
 
     return parser
 
@@ -450,7 +440,7 @@ def train_mugs(args):
         utils.init_distributed_ddpjob(args)
     else:
         utils.init_distributed_mode(args)
-
+    
     ##======== fix seed for reproduce ============
     utils.fix_random_seeds(args.seed)
     print("git:\n  {}\n".format(utils.get_sha()))
@@ -461,7 +451,10 @@ def train_mugs(args):
     cudnn.deterministic = True
 
     ##======== get the training dataset/loader ============
-    data_loader = get_dataset(args)
+    
+    data_loader = get_dataset_xrv(args)
+    # data_loader = get_dataset(args)
+
     logger.info(f"Data loaded: there are {len(data_loader.dataset)} images.")
 
     ##====== build  student and teacher networks (vit_small, vit_base, vit_large) =========
@@ -778,7 +771,7 @@ def train_one_epoch(
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
 
-        if epoch_it % 500 == 0 and args.rank == 0:  # and epoch_it < 10:
+        if epoch_it % 100 == 0 and args.rank == 0:  # and epoch_it < 10:
             log_results = ""
             for _, loss_name in enumerate(all_losses):
                 if all_weights[loss_name] > 0:

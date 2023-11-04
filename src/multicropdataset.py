@@ -26,6 +26,8 @@ from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.data.random_erasing import RandomErasing
 from timm.data.transforms import _pil_interp
 
+import xrv_simple
+
 
 class GaussianBlur(object):
     """
@@ -379,6 +381,9 @@ def get_dataset(args):
 
     ## For debug mode, we only load the first two classes to reduce data reading time.
     ## otherwise, we load all training data for pretraining.
+    
+    args.data_path = '/vol/vssp/datasets/still/places365/val'
+    
     class_num = 2 if args.debug else 1000
     dataset = ImageFolder(args.data_path, transform=transform, class_num=class_num)
 
@@ -392,6 +397,49 @@ def get_dataset(args):
         drop_last=True,
     )
     return data_loader
+
+
+def get_dataset_xrv(args):
+    """
+    build a multi-crop data augmentation and a dataset/dataloader
+    """
+    ## preparing augmentations, including weak and strong augmentations
+    transform = DataAugmentation(
+        global_crops_scale=args.global_crops_scale,
+        local_crops_scale=args.local_crops_scale,
+        local_crops_number=args.local_crops_number,
+        vanilla_weak_augmentation=args.vanilla_weak_augmentation,
+        prob=args.prob,
+        color_aug=args.color_aug,
+        local_crop_size=args.size_crops,
+        timm_auto_augment_par=args.timm_auto_augment_par,
+        strong_ratio=args.strong_ratio,
+        re_prob=args.re_prob,
+        use_prefetcher=args.use_prefetcher,
+    )
+
+    if args.weka:
+        data_root = '/mnt/fast/datasets/radiology'
+    else:
+        data_root = '/vol/research/datasets/radiology'
+    
+    dataset = xrv_simple.CXR_Pretrain_Dataset_v2(datapath=data_root,
+                                               transform=transform)
+    
+    sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
+    print("Sampler_train = %s" % str(sampler))
+        
+    # sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
+    data_loader = torch.utils.data.DataLoader(
+        dataset,
+        sampler=sampler,
+        batch_size=args.batch_size_per_gpu,
+        num_workers=args.num_workers,
+        pin_memory=True,
+        drop_last=True,
+    )
+    return data_loader
+
 
 
 class data_prefetcher:
